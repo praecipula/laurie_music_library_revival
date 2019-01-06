@@ -11,7 +11,6 @@ with open('logging.yaml') as fobj:
     logging.config.dictConfig(yaml.load(fobj))
 
 
-
 logger = logging.getLogger("rml")
 logger.info("Starting parse")
 
@@ -216,8 +215,6 @@ class Playlists(PlistInterface):
     def __str__(self):
         return f"{self.playlist_id} {self.name}"
 
-
-
 def get_tracks():
     # There is only one tag here
     top_dict = root[0]
@@ -255,9 +252,50 @@ class CursesWinAbs:
         self._win.refresh()
         [child.refresh_recursive() for child in self._children]
 
+    @property
+    def parent(self):
+        return self._parent
+
+    def main_window(self):
+        main_win = self
+        while (main_win.parent != None):
+            main_win = self.parent
+        return main_win
+
+
+
+class Breadcrumbs:
+    def __init__(self):
+        self._trail = []
+
+    def push(self, screen):
+        self._trail.push(screen)
+
+    def pop(self, screen):
+        self._trail.pop(screen)
+
+class Keymapping(CursesWinAbs):
+    def __init__(self, stdscr):
+        self._scr = stdscr
+        self._mapping = {}
+
+    def register_callback(self, char, cb):
+        self._mapping[char] = cb
+
+    def listen(self):
+        key = self._scr.getkey()
+        if key in self._mapping:
+            logger.debug(f"Key {key} pressed")
+
 class MainWin(CursesWinAbs):
     def __init__(self, win):
         super(MainWin, self).__init__(None, win)
+        self._breadcrumbs = Breadcrumbs()
+        self._keymapping = Keymapping(win)
+
+    @property
+    def keymapping(self):
+        return self._keymapping
 
     def draw(self):
         self._win.addstr(0, 0, "Main Window")
@@ -271,7 +309,7 @@ class Menu(CursesWinAbs):
 
 class NavigableMenu(CursesWinAbs):
     def __init__(self, parent, win):
-        super(NavigableMenu, self).__init__(None, win)
+        super(NavigableMenu, self).__init__(parent, win)
         self._options = []
 
     @property
@@ -288,18 +326,15 @@ class NavigableMenu(CursesWinAbs):
             self._win.addstr(i + 1, 0, f"{i}: ", curses.A_BOLD | curses.color_pair(1))
             self._win.addstr(i + 1, 3, f"{str(self._options[i])}")
 
-class Keymapping(CursesWinAbs):
-    def __init__(self, stdscr):
-        self._scr = stdscr
-        self._mapping = {}
 
-    def register_callback(self, char, cb):
-        self._mapping[char] = cb
+class TopMenu(NavigableMenu):
+    def __init__(self, parent, win):
+        super(TopMenu, self).__init__(parent, win)
+        self.options = ["List albums", "List songs", "Search albums by name", "Search songs by name"]
+        self.main_window().keymapping.register_callback('0', None)
 
-    def listen(self):
-        key = self._scr.getkey()
-        if key in self._mapping:
-            logger.debug(f"Key {key} pressed")
+    
+
 
 def main(stdscr):
     stdscr.clear()
@@ -311,13 +346,10 @@ def main(stdscr):
     HEIGHT=3
     menu = main_win.add_child(Menu, HEIGHT, curses.COLS, curses.LINES - HEIGHT, 0)
     HEIGHT=curses.LINES - HEIGHT - 1
-    nav = main_win.add_child(NavigableMenu, HEIGHT, curses.COLS, 1, 0)
-    nav.options = ["List albums", "List songs", "Search albums by name", "Search songs by name"]
-    mapping = Keymapping(stdscr)
-    mapping.register_callback('0', None)
+    nav = main_win.add_child(TopMenu, HEIGHT, curses.COLS, 1, 0)
     main_win.redraw_recursive()
     main_win.refresh_recursive()
-    mapping.listen()
+    main_win.keymapping.listen()
 
     #get_playlists()
 
