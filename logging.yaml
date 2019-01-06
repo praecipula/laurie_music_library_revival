@@ -13,12 +13,12 @@ handlers:
     class: logging.handlers.RotatingFileHandler
     level: DEBUG
     formatter: default
-    filename: ohmega.log
+    filename: read_music_library.log
     maxBytes: 5242880
     backupCount: 5
     encoding: utf-8
 loggers:
-  ohmega:
+  rml:
     level: DEBUG
     handlers:
       - console

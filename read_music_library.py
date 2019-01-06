@@ -4,15 +4,17 @@ import yaml
 import logging
 import logging.config
 import dateutil.parser
+import curses
+from curses import wrapper
 
 with open('logging.yaml') as fobj:
     logging.config.dictConfig(yaml.load(fobj))
 
 
 
-logger = logging.getLogger(__name__)
-
+logger = logging.getLogger("rml")
 logger.info("Starting parse")
+
 tree = etree.parse('./iTunes Music Library.xml')
 root = tree.getroot()
 
@@ -232,11 +234,93 @@ def get_playlists():
     pi = p.playlist_items()
     [print(song) for song in pi]
 
-        
 
-#get_tracks()
-get_playlists()
+class CursesWinAbs:
+    def __init__(self, parent, win):
+        self._parent = parent
+        self._win = win
+        self._children = []
 
-#print(Tracks.find_by_id("2865"))
+    def add_child(self, klass, height, width, y, x):
+        win = curses.newwin(height, width, y, x)
+        child = klass(self, win)
+        self._children.append(child)
+        return child
+
+    def redraw_recursive(self):
+        self.draw()
+        [child.redraw_recursive() for child in self._children]
+
+    def refresh_recursive(self):
+        self._win.refresh()
+        [child.refresh_recursive() for child in self._children]
+
+class MainWin(CursesWinAbs):
+    def __init__(self, win):
+        super(MainWin, self).__init__(None, win)
+
+    def draw(self):
+        self._win.addstr(0, 0, "Main Window")
+
+class Menu(CursesWinAbs):
+
+    def draw(self):
+        for i in range(0, curses.COLS):
+            self._win.addch(0, i, '=', curses.A_REVERSE)
+        self._win.addstr(0, 0, "Hotkeys:", curses.A_REVERSE)
+
+class NavigableMenu(CursesWinAbs):
+    def __init__(self, parent, win):
+        super(NavigableMenu, self).__init__(None, win)
+        self._options = []
+
+    @property
+    def options(self):
+        return self._options
+
+    @options.setter
+    def options(self, options):
+        self._options = options
+
+    def draw(self):
+        self._win.addstr(0, 0, "Please select an option:")
+        for i in range(0, len(self._options)):
+            self._win.addstr(i + 1, 0, f"{i}: ", curses.A_BOLD | curses.color_pair(1))
+            self._win.addstr(i + 1, 3, f"{str(self._options[i])}")
+
+class Keymapping(CursesWinAbs):
+    def __init__(self, stdscr):
+        self._scr = stdscr
+        self._mapping = {}
+
+    def register_callback(self, char, cb):
+        self._mapping[char] = cb
+
+    def listen(self):
+        key = self._scr.getkey()
+        if key in self._mapping:
+            logger.debug(f"Key {key} pressed")
+
+def main(stdscr):
+    stdscr.clear()
+
+    # Init pallette
+    curses.init_pair(1, curses.COLOR_BLUE, curses.COLOR_BLACK)
+
+    main_win = MainWin(stdscr)
+    HEIGHT=3
+    menu = main_win.add_child(Menu, HEIGHT, curses.COLS, curses.LINES - HEIGHT, 0)
+    HEIGHT=curses.LINES - HEIGHT - 1
+    nav = main_win.add_child(NavigableMenu, HEIGHT, curses.COLS, 1, 0)
+    nav.options = ["List albums", "List songs", "Search albums by name", "Search songs by name"]
+    mapping = Keymapping(stdscr)
+    mapping.register_callback('0', None)
+    main_win.redraw_recursive()
+    main_win.refresh_recursive()
+    mapping.listen()
+
+    #get_playlists()
+
+curses.wrapper(main)
 
 logger.info("Done")
